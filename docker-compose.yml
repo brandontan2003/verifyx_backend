@@ -1,0 +1,32 @@
+services:
+  verifyx_backend_service:
+    init: true
+    build:
+      dockerfile: ./Dockerfile
+    image: verifyx-backend-image:latest
+    container_name: verifyx_backend_service
+    env_file:
+      - .env.dev
+    ports:
+      - '8000:8000'
+    restart: on-failure
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - '6379:6379'
+    restart: on-failure
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+networks:
+  default:
+    name: verifyx-network
