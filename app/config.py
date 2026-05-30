@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     RULE_SERVER_PASSWORD: str = ""
     XP_TABLE: str = "{1: 10, 2: 20, 3: 35, 4: 50, 5: 75}"
 
+    # Logging levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOGGING_LEVEL: str = "INFO"
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parent.parent / f".env.{env}",
         extra="ignore",
