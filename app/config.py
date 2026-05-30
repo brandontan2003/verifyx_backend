@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
+    # AI prompt configuration
+    AI_PLATFORM_CONTEXT: str = "a digital literacy and media safety training platform"
+    # When True, appends a child-safety instruction suffix to all AI scenario generation
+    # prompts. Must be True for any child-facing deployment
+    CHILD_SAFETY_MODE: bool = True
+
     # Supabase admin (server-side session revocation)
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_KEY: str = ""

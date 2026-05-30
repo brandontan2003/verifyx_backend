@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.authentication.cognito import CognitoAuthProvider
+from app.core.authentication.giggle import GiggleAuthProvider
 from app.core.authentication.supabase import SupabaseAuthProvider
 from app.core.authentication_provider import AuthProvider
 from app.core.exceptions.exceptions import InvalidTokenException, RoleForbiddenException
@@ -23,6 +24,8 @@ security = HTTPBearer(auto_error=False)
 def get_auth_provider() -> AuthProvider:
     if settings.AUTH_PROVIDER == "cognito":
         return CognitoAuthProvider()
+    if settings.AUTH_PROVIDER == "giggle":
+        return GiggleAuthProvider()
     return SupabaseAuthProvider()
 
 

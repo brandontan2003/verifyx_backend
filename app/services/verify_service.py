@@ -1,10 +1,14 @@
 from app.ai.client import _parse_json
 from app.ai.factory import complete_with_fallback
+from app.config import settings
 from app.dto.news import VerifyRequest, VerifyResponse
 
 LOW_CONFIDENCE_THRESHOLD = 70
 
-_VERIFY_SYSTEM = """You are a fact-checking assistant for a digital literacy platform in Singapore.
+# {platform_context} is injected at call time from settings.AI_PLATFORM_CONTEXT.
+# This keeps the prompt free of hardcoded deployment references so the same
+# service works for Singapore, Giggle Academy, or any other operator.
+_VERIFY_SYSTEM = """You are a fact-checking assistant for {platform_context}.
 Your role is to assess whether a piece of content (a URL, message, or claim) is legitimate, suspicious, \
 a scam, or misinformation.
 
@@ -59,7 +63,7 @@ VALID_VERDICTS = {
 
 async def verify_content(payload: VerifyRequest) -> VerifyResponse:
     raw = await complete_with_fallback(
-        system=_VERIFY_SYSTEM,
+        system=_VERIFY_SYSTEM.format(platform_context=settings.AI_PLATFORM_CONTEXT),
         user=_VERIFY_USER.format(content=payload.content),
         max_tokens=512,
     )
