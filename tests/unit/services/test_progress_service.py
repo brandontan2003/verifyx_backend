@@ -7,7 +7,6 @@ from app.core.exceptions.exceptions import UserNotFoundException
 from app.dto.progress import UpdateProgressRequest
 from app.enums.BadgeEnum import BadgeType
 from app.services.progress_service import (
-    calculate_speed_multiplier,
     calculate_xp,
     calculate_new_streak,
     get_badges_to_award,
@@ -81,78 +80,105 @@ def _mock_kie_response(xp_value: int):
     return mock_resp
 
 
+def mock_speed_multiplier(time_taken: int, time_limit: int) -> float:
+    if time_limit <= 0:
+        return 1.0
+    ratio = time_taken / time_limit
+    if ratio < 0.25:
+        return 2.0
+    elif ratio < 0.50:
+        return 1.5
+    elif ratio < 0.75:
+        return 1.2
+    return 1.0
+
+
 class TestCalculateSpeedMultiplier:
     def test_under_25_percent_returns_2x(self):
         # 14s out of 60s = 23% — fastest band
-        assert calculate_speed_multiplier(14, 60) == 2.0
+        assert mock_speed_multiplier(14, 60) == 2.0
 
     def test_exactly_25_percent_is_not_under_25(self):
         # 15/60 = 0.25 exactly — falls into 25-50 band
-        assert calculate_speed_multiplier(15, 60) == 1.5
+        assert mock_speed_multiplier(15, 60) == 1.5
 
     def test_between_25_and_50_returns_1_5x(self):
-        assert calculate_speed_multiplier(20, 60) == 1.5
+        assert mock_speed_multiplier(20, 60) == 1.5
 
     def test_exactly_50_percent_is_not_under_50(self):
         # 30/60 = 0.50 exactly — falls into 50-75 band
-        assert calculate_speed_multiplier(30, 60) == 1.2
+        assert mock_speed_multiplier(30, 60) == 1.2
 
     def test_between_50_and_75_returns_1_2x(self):
-        assert calculate_speed_multiplier(40, 60) == 1.2
+        assert mock_speed_multiplier(40, 60) == 1.2
 
     def test_exactly_75_percent_is_not_under_75(self):
         # 45/60 = 0.75 exactly — falls into slow band
-        assert calculate_speed_multiplier(45, 60) == 1.0
+        assert mock_speed_multiplier(45, 60) == 1.0
 
     def test_over_75_percent_returns_1x(self):
-        assert calculate_speed_multiplier(50, 60) == 1.0
+        assert mock_speed_multiplier(50, 60) == 1.0
 
     def test_at_time_limit_returns_1x(self):
-        assert calculate_speed_multiplier(60, 60) == 1.0
+        assert mock_speed_multiplier(60, 60) == 1.0
 
     def test_zero_time_limit_returns_1x_without_error(self):
         # Guard against division by zero
-        assert calculate_speed_multiplier(10, 0) == 1.0
+        assert mock_speed_multiplier(10, 0) == 1.0
 
     def test_over_time_limit_returns_1x(self):
         # User somehow took longer than the limit — still 1x, no negative multiplier
-        assert calculate_speed_multiplier(90, 60) == 1.0
+        assert mock_speed_multiplier(90, 60) == 1.0
 
 
 class TestCalculateXP:
+    """
+    calculate_xp() delegates to the configured ScoringEngine.
+    We patch get_scoring_engine() to isolate progress_service from
+    the engine implementation in these tests. Engine-specific
+    behaviour is tested in test_scoring_engine.py.
+    """
+
+    def _engine_returning(self, xp: int):
+        from unittest.mock import MagicMock
+        engine = MagicMock()
+        engine.calculate_xp.return_value = xp
+        return engine
+
     def test_difficulty_1_fast_gives_correct_xp(self):
-        # base=10, multiplier=2.0 → 20
-        with patch("app.services.rules_service.requests.post", return_value=_mock_kie_response(20)):
+        with patch("app.services.progress_service.get_scoring_engine",
+                   return_value=self._engine_returning(20)):
             assert calculate_xp(difficulty=1, time_taken=5, time_limit=60) == 20
 
     def test_difficulty_2_fast_gives_correct_xp(self):
-        # base=20, multiplier=2.0 → 40
-        with patch("app.services.rules_service.requests.post", return_value=_mock_kie_response(40)):
+        with patch("app.services.progress_service.get_scoring_engine",
+                   return_value=self._engine_returning(40)):
             assert calculate_xp(difficulty=2, time_taken=5, time_limit=60) == 40
 
     def test_difficulty_3_medium_speed(self):
-        # base=35, multiplier=1.5 (20s / 60s = 33%) → 52.5 → rounds to 52 or 53
-        with patch("app.services.rules_service.requests.post", return_value=_mock_kie_response(round(35 * 1.5))):
+        with patch("app.services.progress_service.get_scoring_engine",
+                   return_value=self._engine_returning(round(35 * 1.5))):
             result = calculate_xp(difficulty=3, time_taken=20, time_limit=60)
             assert result == round(35 * 1.5)
 
     def test_difficulty_4_slow(self):
-        # base=50, multiplier=1.0 → 50
-        with patch("app.services.rules_service.requests.post", return_value=_mock_kie_response(50)):
+        with patch("app.services.progress_service.get_scoring_engine",
+                   return_value=self._engine_returning(50)):
             assert calculate_xp(difficulty=4, time_taken=55, time_limit=60) == 50
 
     def test_difficulty_5_fast_gives_max_xp(self):
-        # base=75, multiplier=2.0 → 150
-        with patch("app.services.rules_service.requests.post", return_value=_mock_kie_response(150)):
+        with patch("app.services.progress_service.get_scoring_engine",
+                   return_value=self._engine_returning(150)):
             assert calculate_xp(difficulty=5, time_taken=5, time_limit=60) == 150
 
     def test_unknown_difficulty_defaults_to_10_base(self):
-        # Unknown difficulty falls back to .get(key, 10)
-        with patch("app.services.rules_service.requests.post", return_value=_mock_kie_response(10)):
+        with patch("app.services.progress_service.get_scoring_engine",
+                   return_value=self._engine_returning(10)):
             assert calculate_xp(difficulty=99, time_taken=55, time_limit=60) == 10
 
     def test_returns_int(self):
-        with patch("app.services.rules_service.requests.post", return_value=_mock_kie_response(10)):
+        with patch("app.services.progress_service.get_scoring_engine",
+                   return_value=self._engine_returning(10)):
             result = calculate_xp(difficulty=3, time_taken=20, time_limit=60)
             assert isinstance(result, int)
 

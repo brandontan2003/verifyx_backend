@@ -3,8 +3,8 @@ import uuid
 from sqlalchemy import Column, String, Text, DateTime, Integer, Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.sql import func
 
-from app.models.base import Base
 from app.enums.NewsEnum import ReactionType
+from app.models.base import Base
 
 
 class NewsPost(Base):
@@ -13,9 +13,9 @@ class NewsPost(Base):
     news_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     report_id = Column(String, ForeignKey("reports.report_id"), nullable=False, unique=True, index=True)
     title = Column(String, nullable=False)
-    harm_type = Column(String, nullable=False)   # mirrored from report for fast queries
-    content = Column(Text, nullable=False)        # mirrored from report.content
-    context = Column(Text, nullable=True)         # mirrored from report.context
+    harm_type = Column(String, nullable=False)  # mirrored from report for fast queries
+    content = Column(Text, nullable=False)  # mirrored from report.content
+    context = Column(Text, nullable=True)  # mirrored from report.context
     upvotes = Column(Integer, nullable=False, server_default="0")
     downvotes = Column(Integer, nullable=False, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -52,7 +52,10 @@ class Settings(BaseSettings):
     COGNITO_CLIENT_ID: str = ""
     COGNITO_USER_POOL_ID: str = ""
 
-    # Rules Configuration
+    # Rules / Scoring Engine
+    # "default" → DefaultScoringEngine (pure-Python, no external dependency)
+    # "kie" → KIEScoringEngine (delegates to KIE/Drools DMN server, falls back to DefaultScoringEngine on KIE failure)
+    SCORING_ENGINE: str = "default"
     RULE_SERVER_URL: str = ""
     RULE_SERVER_USER: str = ""
     RULE_SERVER_PASSWORD: str = ""

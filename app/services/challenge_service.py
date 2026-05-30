@@ -3,9 +3,9 @@ import math
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import client as ai
+from app.core.cache.rate_limit.dependencies import _check_daily_limit, _increment_daily_limit
 from app.core.exceptions.exceptions import ChallengeNotFoundException, InvalidAnswerFormatException
 from app.core.logger import logger
-from app.core.rate_limit.dependencies import _check_daily_limit, _increment_daily_limit
 from app.dto.challenge import (
     GenerateChallengeRequest, ChallengeResponse, ChallengeOption,
     SubmitAnswerRequest, AttemptResponse, DebriefDetail,

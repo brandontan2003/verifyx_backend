@@ -1,10 +1,3 @@
-"""
-Unit tests for:
-  - app.core.rate_limit.limiter  (is_rate_limited, _normalise_path, _get_ip)
-  - app.core.rate_limit.dependencies (ai/auth/room/read/submit rate limit guards)
-
-Redis is fully mocked — no real connection required.
-"""
 import time
 from unittest.mock import AsyncMock, patch
 
@@ -12,15 +5,15 @@ import pytest
 from fastapi import Request
 from starlette.datastructures import Headers
 
-from app.core.exceptions.exceptions import RateLimitExceededException
-from app.core.rate_limit.dependencies import (
+from app.core.cache.rate_limit.dependencies import (
     ai_rate_limit,
     auth_rate_limit,
     room_rate_limit,
     read_rate_limit,
     submit_rate_limit,
 )
-from app.core.rate_limit.limiter import normalise_path, get_ip, is_rate_limited
+from app.core.cache.rate_limit.limiter import normalise_path, get_ip, is_rate_limited
+from app.core.exceptions.exceptions import RateLimitExceededException
 
 
 def _make_request(path: str = "/submit", method: str = "POST", client_host: str = "1.2.3.4",
@@ -114,7 +107,7 @@ class TestIsRateLimited:
         redis = _mock_redis(current_count=1)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             limited, headers = await is_rate_limited(req, limit=10)
 
         assert limited is False
@@ -127,7 +120,7 @@ class TestIsRateLimited:
         redis = _mock_redis(current_count=10)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             limited, headers = await is_rate_limited(req, limit=10)
 
         assert limited is False
@@ -138,7 +131,7 @@ class TestIsRateLimited:
         redis = _mock_redis(current_count=11)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             limited, headers = await is_rate_limited(req, limit=10)
 
         assert limited is True
@@ -149,7 +142,7 @@ class TestIsRateLimited:
         redis = _mock_redis(current_count=999)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             limited, headers = await is_rate_limited(req, limit=10)
 
         assert int(headers["X-RateLimit-Remaining"]) == 0
@@ -160,7 +153,7 @@ class TestIsRateLimited:
         redis = _mock_redis(current_count=1)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             await is_rate_limited(req, limit=10)
 
         redis.expire.assert_called_once()
@@ -170,7 +163,7 @@ class TestIsRateLimited:
         redis = _mock_redis(current_count=5)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             await is_rate_limited(req, limit=10)
 
         redis.expire.assert_not_called()
@@ -181,7 +174,7 @@ class TestIsRateLimited:
         # Use /room/join (both segments < 8 chars, nothing stripped) for a predictable key
         req = _make_request(path="/room/join", method="GET", client_host="1.2.3.4")
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             await is_rate_limited(req, limit=10)
 
         called_key = redis.incr.call_args[0][0]
@@ -194,7 +187,7 @@ class TestIsRateLimited:
         req = _make_request()
 
         before = int(time.time())
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             _, headers = await is_rate_limited(req, limit=10)
 
         reset = int(headers["X-RateLimit-Reset"])
@@ -208,7 +201,7 @@ class TestIsRateLimited:
 
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             limited, headers = await is_rate_limited(req, limit=10)
 
         assert limited is False
@@ -219,7 +212,7 @@ class TestIsRateLimited:
         redis = _mock_redis(current_count=1)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             await is_rate_limited(req, limit=10, window_seconds=120)
 
         from unittest.mock import ANY
@@ -233,7 +226,7 @@ class TestIsRateLimited:
         req_a = _make_request(client_host="1.1.1.1")
         req_b = _make_request(client_host="2.2.2.2")
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis):
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis):
             await is_rate_limited(req_a, limit=10)
             await is_rate_limited(req_b, limit=10)
 
@@ -262,8 +255,8 @@ class TestRateLimitDependencies:
         redis = _mock_redis(current_count=1)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis), \
-                patch("app.core.rate_limit.dependencies.settings") as mock_settings:
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis), \
+                patch("app.core.cache.rate_limit.dependencies.settings") as mock_settings:
             setattr(mock_settings, limit_setting, 10)
             result = await dep_fn(req)
 
@@ -281,8 +274,8 @@ class TestRateLimitDependencies:
         redis = _mock_redis(current_count=999)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis), \
-                patch("app.core.rate_limit.dependencies.settings") as mock_settings:
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis), \
+                patch("app.core.cache.rate_limit.dependencies.settings") as mock_settings:
             setattr(mock_settings, limit_setting, 10)
 
             with pytest.raises(RateLimitExceededException) as exc_info:
@@ -295,8 +288,8 @@ class TestRateLimitDependencies:
         redis = _mock_redis(current_count=999, ttl=30)
         req = _make_request()
 
-        with patch("app.core.rate_limit.limiter.get_redis", return_value=redis), \
-                patch("app.core.rate_limit.dependencies.settings") as mock_settings:
+        with patch("app.core.cache.rate_limit.limiter.get_store", return_value=redis), \
+                patch("app.core.cache.rate_limit.dependencies.settings") as mock_settings:
             mock_settings.RATE_LIMIT_AUTH = 5
 
             with pytest.raises(RateLimitExceededException) as exc_info:

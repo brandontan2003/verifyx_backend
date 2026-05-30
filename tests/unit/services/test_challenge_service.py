@@ -272,7 +272,7 @@ class TestSubmitAnswer:
                   patch("app.services.challenge_service.ai.evaluate_response", AsyncMock(return_value=MOCK_EVALUATION)),
                   patch("app.services.challenge_service.ai.generate_debrief",
                         AsyncMock(return_value=MOCK_DEBRIEF)),
-                  patch("app.services.progress_service.RulesEngine.execute", return_value=[
+                  patch("app.services.progress_service.update_progress", return_value=[
                       MagicMock(decision_name=DecisionNameEnum.CALCULATE_XP, status="SUCCEEDED", result=40)])):
                 MockUR_PS.return_value.get_by_user_id = AsyncMock(return_value=user)
                 MockUR_CS.return_value.get_by_user_id = AsyncMock(return_value=user)
@@ -296,7 +296,7 @@ class TestSubmitAnswer:
                     AsyncMock(return_value=MOCK_EVALUATION)),
               patch("app.services.challenge_service.ai.generate_debrief",
                     AsyncMock(return_value=MOCK_DEBRIEF)),
-              patch("app.services.progress_service.RulesEngine.execute",
+              patch("app.services.progress_service.update_progress",
                     return_value=[
                         MagicMock(decision_name=DecisionNameEnum.CALCULATE_XP, status="SUCCEEDED", result=40)]),
               patch("app.services.challenge_service._check_daily_limit", return_value=None),
@@ -322,11 +322,11 @@ class TestSubmitAnswer:
         user = _make_user(xp=40)
 
         with (patch("app.services.challenge_service.ChallengeRepository", return_value=repo),
-                patch("app.services.challenge_service.UserRepository") as MockUR,
-                patch("app.services.challenge_service.update_progress"),
-                patch("app.services.challenge_service.ai.evaluate_response",
-                      AsyncMock(return_value=MOCK_EVALUATION)),
-                patch("app.services.challenge_service.ai.generate_debrief", AsyncMock(return_value=MOCK_DEBRIEF))):
+              patch("app.services.challenge_service.UserRepository") as MockUR,
+              patch("app.services.challenge_service.update_progress"),
+              patch("app.services.challenge_service.ai.evaluate_response",
+                    AsyncMock(return_value=MOCK_EVALUATION)),
+              patch("app.services.challenge_service.ai.generate_debrief", AsyncMock(return_value=MOCK_DEBRIEF))):
             MockUR.return_value.get_by_user_id = AsyncMock(return_value=user)
             result = await submit_answer("uid-001", "ch-001", self._payload(), DB)
 
@@ -362,7 +362,7 @@ class TestSubmitAnswer:
                 patch("app.services.challenge_service.ai.evaluate_response",
                       AsyncMock(return_value=MOCK_EVALUATION)), \
                 patch("app.services.challenge_service.ai.generate_debrief",
-                      AsyncMock(return_value=MOCK_DEBRIEF)), patch("app.services.progress_service.RulesEngine.execute",
+                      AsyncMock(return_value=MOCK_DEBRIEF)), patch("app.services.progress_service.update_progress",
                                                                    return_value=[MagicMock(
                                                                        decision_name=DecisionNameEnum.CALCULATE_XP,
                                                                        status="SUCCEEDED", result=40)]):
@@ -388,7 +388,7 @@ class TestSubmitAnswer:
                 patch("app.services.challenge_service.ai.evaluate_response",
                       AsyncMock(return_value=MOCK_EVALUATION)), \
                 patch("app.services.challenge_service.ai.generate_debrief",
-                      AsyncMock(return_value=MOCK_DEBRIEF)), patch("app.services.progress_service.RulesEngine.execute",
+                      AsyncMock(return_value=MOCK_DEBRIEF)), patch("app.services.progress_service.update_progress",
                                                                    return_value=[MagicMock(
                                                                        decision_name=DecisionNameEnum.CALCULATE_XP,
                                                                        status="SUCCEEDED", result=40)]):
@@ -413,7 +413,7 @@ class TestSubmitAnswer:
                 patch("app.services.challenge_service.ai.evaluate_response",
                       AsyncMock(return_value=MOCK_EVALUATION)), \
                 patch("app.services.challenge_service.ai.generate_debrief",
-                      AsyncMock(return_value=MOCK_DEBRIEF)), patch("app.services.progress_service.RulesEngine.execute",
+                      AsyncMock(return_value=MOCK_DEBRIEF)), patch("app.services.progress_service.update_progress",
                                                                    return_value=[MagicMock(
                                                                        decision_name=DecisionNameEnum.CALCULATE_XP,
                                                                        status="SUCCEEDED", result=40)]):
@@ -474,7 +474,7 @@ class TestSubmitAnswer:
               patch("app.services.challenge_service.ai.generate_debrief",
                     AsyncMock(return_value=MOCK_DEBRIEF)),
               patch("app.services.room_service.record_room_result", AsyncMock()) as mock_room,
-              patch("app.services.progress_service.RulesEngine.execute",
+              patch("app.services.progress_service.update_progress",
                     return_value=[
                         MagicMock(decision_name=DecisionNameEnum.CALCULATE_XP, status="SUCCEEDED", result=40)])):
             MockUR_PS.return_value.get_by_user_id = AsyncMock(return_value=user)
@@ -502,7 +502,7 @@ class TestSubmitAnswer:
               patch("app.services.challenge_service.ai.evaluate_response", AsyncMock(return_value=MOCK_EVALUATION)),
               patch("app.services.challenge_service.ai.generate_debrief", AsyncMock(return_value=MOCK_DEBRIEF)),
               patch("app.services.room_service.record_room_result", AsyncMock()) as mock_room,
-              patch("app.services.progress_service.RulesEngine.execute", return_value=[
+              patch("app.services.progress_service.update_progress", return_value=[
                   MagicMock(decision_name=DecisionNameEnum.CALCULATE_XP, status="SUCCEEDED", result=40)])):
             MockUR_CS.return_value.get_by_user_id = AsyncMock(return_value=user)
             MockUR_PS.return_value.get_by_user_id = AsyncMock(return_value=user)
