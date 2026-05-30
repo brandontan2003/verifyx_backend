@@ -1,121 +1,124 @@
-from unittest.mock import MagicMock, patch
+"""
+Unit tests for app.core.rules.scoring_engine
+
+All calculate_xp methods are now async — tests use @pytest.mark.asyncio.
+KIE happy-path patches httpx.AsyncClient (replacing the old requests.post mock).
+"""
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 import app.core.rules.scoring_engine as scoring_module
 from app.core.rules.scoring_engine import DefaultScoringEngine, KIEScoringEngine, get_scoring_engine
 
 
-def _make_kie_response(xp_value: int) -> MagicMock:
-    """Minimal mock that satisfies evaluate_result_list()."""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "type": "SUCCESS",
-        "msg": "Message",
-        "result": {
-            "dmn-evaluation-result": {
-                "messages": [],
-                "model-namespace": "model url",
-                "model-name": "Xp",
-                "decision-name": "CalculateXP",
-                "dmn-context": {
-                    "InputData": {"difficulty": 1, "time_limit": 60, "time_taken": 5},
-                    "CalculateXP": xp_value,
-                },
-                "decision-results": {
-                    "_BE7648BE": {
-                        "messages": [],
-                        "decision-id": "_BE7648BE",
-                        "decision-name": "CalculateXP",
-                        "result": xp_value,
-                        "status": "SUCCEEDED",
-                    }
-                },
-            }
-        },
-    }
-    return mock_resp
+def _make_kie_result_list(xp_value: int) -> list:
+    """
+    RulesEngine.execute() now returns evaluate_rules_response()'s output directly —
+    a list of DMNDecisionResultInfo objects. Build a minimal mock of that shape.
+    """
+    info = MagicMock()
+    info.decision_name = "CalculateXP"
+    info.status = "SUCCEEDED"
+    info.result = xp_value
+    return [info]
 
 
 class TestDefaultScoringEngine:
     engine = DefaultScoringEngine()
 
-    # --- speed multiplier bands (via full calculate_xp path) ---
-
-    def test_diff1_fast_band(self):
+    @pytest.mark.asyncio
+    async def test_diff1_fast_band(self):
         # base=10, 5/60=8% < 25% → 2.0x → 20
-        assert self.engine.calculate_xp(1, 5, 60) == 20
+        assert await self.engine.calculate_xp(1, 5, 60) == 20
 
-    def test_diff2_fast_band(self):
-        # base=20, 2.0x → 40
-        assert self.engine.calculate_xp(2, 5, 60) == 40
+    @pytest.mark.asyncio
+    async def test_diff2_fast_band(self):
+        assert await self.engine.calculate_xp(2, 5, 60) == 40
 
-    def test_diff3_mid_band(self):
+    @pytest.mark.asyncio
+    async def test_diff3_mid_band(self):
         # base=35, 20/60=33% → 1.5x → round(52.5)=52
-        assert self.engine.calculate_xp(3, 20, 60) == round(35 * 1.5)
+        assert await self.engine.calculate_xp(3, 20, 60) == round(35 * 1.5)
 
-    def test_diff4_slow_band(self):
-        # base=50, 55/60=91% → 1.0x → 50
-        assert self.engine.calculate_xp(4, 55, 60) == 50
+    @pytest.mark.asyncio
+    async def test_diff4_slow_band(self):
+        assert await self.engine.calculate_xp(4, 55, 60) == 50
 
-    def test_diff5_fast_band(self):
-        # base=75, 2.0x → 150
-        assert self.engine.calculate_xp(5, 5, 60) == 150
+    @pytest.mark.asyncio
+    async def test_diff5_fast_band(self):
+        assert await self.engine.calculate_xp(5, 5, 60) == 150
 
-    def test_unknown_difficulty_defaults_to_10(self):
-        # .get(99, 10) → 10, slow → 1.0x → 10
-        assert self.engine.calculate_xp(99, 55, 60) == 10
+    @pytest.mark.asyncio
+    async def test_unknown_difficulty_defaults_to_10(self):
+        assert await self.engine.calculate_xp(99, 55, 60) == 10
 
-    def test_returns_int(self):
-        result = self.engine.calculate_xp(3, 20, 60)
+    @pytest.mark.asyncio
+    async def test_returns_int(self):
+        result = await self.engine.calculate_xp(3, 20, 60)
         assert isinstance(result, int)
 
-    def test_zero_time_limit_returns_base_xp(self):
-        # Division-by-zero guard → multiplier=1.0
-        assert self.engine.calculate_xp(1, 0, 0) == 10
+    @pytest.mark.asyncio
+    async def test_zero_time_limit_returns_base_xp(self):
+        assert await self.engine.calculate_xp(1, 0, 0) == 10
 
-    def test_xp_table_parse_failure_uses_hardcoded_defaults(self):
+    @pytest.mark.asyncio
+    async def test_xp_table_parse_failure_uses_hardcoded_defaults(self):
         with patch("app.core.rules.scoring_engine.settings") as mock_settings:
             mock_settings.XP_TABLE = "THIS IS NOT VALID PYTHON"
-            # Should not raise; falls back to {1:10,2:20,3:35,4:50,5:75}
-            result = DefaultScoringEngine().calculate_xp(1, 5, 60)
+            result = await DefaultScoringEngine().calculate_xp(1, 5, 60)
             assert result == 20  # base=10, 2.0x
 
-    def test_all_difficulty_levels_produce_positive_xp(self):
+    @pytest.mark.asyncio
+    async def test_all_difficulty_levels_produce_positive_xp(self):
         for diff in range(1, 6):
-            assert self.engine.calculate_xp(diff, 30, 60) > 0
+            assert await self.engine.calculate_xp(diff, 30, 60) > 0
 
 
 class TestKIEScoringEngine:
 
-    def test_kie_happy_path_returns_server_value(self):
+    @pytest.mark.asyncio
+    async def test_kie_happy_path_returns_server_value(self):
         engine = KIEScoringEngine()
-        with patch("app.services.rules_service.requests.post",
-                   return_value=_make_kie_response(42)):
-            result = engine.calculate_xp(difficulty=2, time_taken=10, time_limit=60)
+        with patch("app.services.rules_service.RulesEngine.execute", new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = _make_kie_result_list(42)
+            result = await engine.calculate_xp(difficulty=2, time_taken=10, time_limit=60)
         assert result == 42
 
-    def test_kie_failure_falls_back_to_default(self):
+    @pytest.mark.asyncio
+    async def test_kie_failure_falls_back_to_default(self):
         from app.core.exceptions.exceptions import RulesException
         engine = KIEScoringEngine()
-        with patch("app.services.rules_service.RulesEngine") as mock_kie:
-            mock_kie.execute.side_effect = RulesException()
+        with patch("app.services.rules_service.RulesEngine.execute", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = RulesException()
             # difficulty=1, time_taken=5 → DefaultScoringEngine → 20
-            result = engine.calculate_xp(difficulty=1, time_taken=5, time_limit=60)
+            result = await engine.calculate_xp(difficulty=1, time_taken=5, time_limit=60)
         assert result == 20
 
-    def test_kie_fallback_returns_int(self):
+    @pytest.mark.asyncio
+    async def test_kie_fallback_returns_int(self):
         from app.core.exceptions.exceptions import RulesException
         engine = KIEScoringEngine()
-        with patch("app.services.rules_service.RulesEngine") as mock_kie:
-            mock_kie.execute.side_effect = RulesException()
-            result = engine.calculate_xp(difficulty=3, time_taken=20, time_limit=60)
+        with patch("app.services.rules_service.RulesEngine.execute", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = RulesException()
+            result = await engine.calculate_xp(difficulty=3, time_taken=20, time_limit=60)
         assert isinstance(result, int)
+
+    @pytest.mark.asyncio
+    async def test_kie_http_error_falls_back_to_default(self):
+        """Non-200 from KIE server raises RulesException → fallback must engage."""
+        from app.core.exceptions.exceptions import RulesException
+        engine = KIEScoringEngine()
+        with patch("app.services.rules_service.RulesEngine.execute", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = RulesException()
+            result = await engine.calculate_xp(difficulty=2, time_taken=30, time_limit=60)
+        # base=20, 30/60=50% → 1.2x band → round(20*1.2)=24
+        assert result == round(20 * 1.2)
 
 
 class TestGetScoringEngine:
 
     def setup_method(self):
-        # Reset singleton before every test
         scoring_module._engine = None
 
     def teardown_method(self):

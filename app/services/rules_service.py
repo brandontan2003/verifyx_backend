@@ -1,4 +1,4 @@
-import requests
+import httpx
 
 from app.config import settings
 from app.core.exceptions.exceptions import RulesException
@@ -31,7 +31,6 @@ def evaluate_rules_response(response: RulesResponse, decision_names: list):
         if name in successful_results:
             results_list.append(successful_results[name])
         else:
-            # If a requested decision failed or wasn't found, raise an exception
             raise RulesException()
 
     if results_list is None or len(results_list) == 0:
@@ -41,7 +40,7 @@ def evaluate_rules_response(response: RulesResponse, decision_names: list):
 
 class RulesEngine:
     @staticmethod
-    def execute(dmn_name: str, decision_name: list, request: dict):
+    async def execute(dmn_name: str, decision_name: list, request: dict):
         config = DMN_REGISTRY.get(dmn_name)
         if not config:
             raise ValueError(f"Rule {dmn_name} not found in registry")
@@ -49,7 +48,6 @@ class RulesEngine:
         url = (f"{settings.RULE_SERVER_URL}/services/rest/server/containers/"
                f"{config['container_id']}/dmn")
 
-        # 3. Construct the Standard KIE Payload
         payload = {
             "model-namespace": config["model_namespace"],
             "model-name": config["model_name"],
@@ -59,13 +57,14 @@ class RulesEngine:
             }
         }
 
-        # 4. Request with Auth
-        response = requests.post(
-            url,
-            json=payload,
-            auth=(settings.RULE_SERVER_USER, settings.RULE_SERVER_PASSWORD),
-            headers={"Content-Type": "application/json", "Accept": "application/json"}
-        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                json=payload,
+                auth=(settings.RULE_SERVER_USER, settings.RULE_SERVER_PASSWORD),
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                timeout=10.0,
+            )
 
         if response.status_code != 200:
             raise RulesException()

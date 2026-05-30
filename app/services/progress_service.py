@@ -11,8 +11,8 @@ from app.repositories.progress_repo import ProgressRepository
 from app.repositories.user_repo import UserRepository
 
 
-def calculate_xp(difficulty: int, time_taken: int, time_limit: int) -> int:
-    return get_scoring_engine().calculate_xp(difficulty, time_taken, time_limit)
+async def calculate_xp(difficulty: int, time_taken: int, time_limit: int) -> int:
+    return await get_scoring_engine().calculate_xp(difficulty, time_taken, time_limit)
 
 
 # Streak calculation
@@ -81,7 +81,7 @@ async def update_progress(user_id: str, payload: UpdateProgressRequest,
 
     today = date.today()
 
-    xp_earned = calculate_xp(
+    xp_earned = await calculate_xp(
         payload.difficulty,
         payload.time_taken_seconds,
         payload.time_limit_seconds

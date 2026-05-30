@@ -3,134 +3,270 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.exceptions.exceptions import RulesException
+from app.core.rules.rules_config import DecisionNameEnum, DmnRegistryKeyEnum
 from app.services.rules_service import (
     RulesEngine,
     evaluate_result_list,
     evaluate_rules_response,
 )
 
-DB = AsyncMock()
+
+def _make_dmn_result_info(decision_name: str, result, status: str = "SUCCEEDED") -> dict:
+    return {
+        "messages": [],
+        "decision-id": "_BE7648BE-F382-4DA4-9DF8-4C3FECC79DA0",
+        "decision-name": decision_name,
+        "result": result,
+        "status": status,
+    }
 
 
-def _make_decision_info(decision_name="CalculateXP", status="SUCCEEDED", result=50):
+def _make_kie_json(xp_value: int, decision_name: str = "CalculateXP",
+                   response_type: str = "SUCCESS") -> dict:
+    """Build a full KIE JSON response as the server would return it."""
+    return {
+        "type": response_type,
+        "msg": "OK",
+        "result": {
+            "dmn-evaluation-result": {
+                "messages": [],
+                "model-namespace": "https://kiegroup.org/dmn/_43BF0ABF",
+                "model-name": "Xp",
+                "decision-name": decision_name,
+                "dmn-context": {
+                    "InputData": {"difficulty": 1, "time_taken": 5, "time_limit": 60},
+                    decision_name: xp_value,
+                },
+                "decision-results": {
+                    "_BE7648BE": _make_dmn_result_info(decision_name, xp_value),
+                },
+            }
+        },
+    }
+
+
+def _make_mock_info(decision_name: str, result, status: str = "SUCCEEDED"):
+    """Build a mock DMNDecisionResultInfo object (as returned by evaluate_rules_response)."""
     info = MagicMock()
     info.decision_name = decision_name
-    info.status = status
     info.result = result
+    info.status = status
     return info
 
 
+def _make_httpx_response(status_code: int, body: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = body
+    return resp
+
+
 class TestEvaluateResultList:
-    def test_returns_result_on_success(self):
-        info = _make_decision_info("CalculateXP", "SUCCEEDED", 75)
+
+    def test_returns_result_for_matching_succeeded_decision(self):
+        info = _make_mock_info("CalculateXP", 42)
         result = evaluate_result_list([info], "CalculateXP")
-        assert result == 75
+        assert result == 42
 
-    def test_raises_rules_exception_on_failed_status(self):
-        info = _make_decision_info("CalculateXP", "FAILED", None)
+    def test_raises_when_decision_status_is_not_succeeded(self):
+        info = _make_mock_info("CalculateXP", None, status="FAILED")
         with pytest.raises(RulesException):
             evaluate_result_list([info], "CalculateXP")
 
-    def test_raises_rules_exception_when_decision_not_in_list(self):
-        info = _make_decision_info("OtherDecision", "SUCCEEDED", 10)
+    def test_raises_when_decision_name_not_in_list(self):
+        info = _make_mock_info("CalculateXP", 42)
         with pytest.raises(RulesException):
-            evaluate_result_list([info], "CalculateXP")
+            evaluate_result_list([info], "NonExistentDecision")
 
-    def test_returns_first_matching_decision(self):
+    def test_raises_on_empty_list(self):
+        with pytest.raises(RulesException):
+            evaluate_result_list([], "CalculateXP")
+
+    def test_returns_first_match_when_multiple_decisions(self):
         infos = [
-            _make_decision_info("Other", "SUCCEEDED", 10),
-            _make_decision_info("CalculateXP", "SUCCEEDED", 50),
+            _make_mock_info("CalculateSpeedMultiplier", 2.0),
+            _make_mock_info("CalculateXP", 100),
         ]
-        result = evaluate_result_list(infos, "CalculateXP")
-        assert result == 50
+        assert evaluate_result_list(infos, "CalculateXP") == 100
+
+    def test_result_can_be_zero(self):
+        info = _make_mock_info("CalculateXP", 0)
+        result = evaluate_result_list([info], "CalculateXP")
+        assert result == 0
+
+    def test_result_can_be_float(self):
+        info = _make_mock_info("CalculateSpeedMultiplier", 1.5)
+        result = evaluate_result_list([info], "CalculateSpeedMultiplier")
+        assert result == 1.5
 
 
 class TestEvaluateRulesResponse:
-    def _make_rules_response(self, decision_name="CalculateXP",
-                             status="SUCCEEDED", result=50, type_="SUCCESS"):
-        info = _make_decision_info(decision_name, status, result)
-        response = MagicMock()
-        response.type = type_
-        response.result.dmn_evaluation_result.decision_results = {
-            decision_name: info
-        }
-        return response
 
-    def test_returns_list_of_results_on_success(self):
-        response = self._make_rules_response()
+    def _make_response_obj(self, xp_value: int, response_type: str = "SUCCESS",
+                           status: str = "SUCCEEDED", result=None):
+        from app.core.rules.rules_dto import RulesResponse
+        body = _make_kie_json(xp_value if result is None else result,
+                              response_type=response_type)
+        if status != "SUCCEEDED":
+            dr = body["result"]["dmn-evaluation-result"]["decision-results"]
+            dr["_BE7648BE"]["status"] = status
+        return RulesResponse.model_validate(body)
+
+    def test_returns_result_list_on_success(self):
+        from app.core.rules.rules_dto import RulesResponse
+        response = RulesResponse.model_validate(_make_kie_json(42))
         result = evaluate_rules_response(response, ["CalculateXP"])
         assert len(result) == 1
-        assert result[0].decision_name == "CalculateXP"
+        assert result[0].result == 42
 
-    def test_raises_when_response_type_not_success(self):
-        response = self._make_rules_response(type_="FAILURE")
+    def test_raises_when_response_type_is_not_success(self):
+        from app.core.rules.rules_dto import RulesResponse
+        response = RulesResponse.model_validate(_make_kie_json(42, response_type="FAILURE"))
         with pytest.raises(RulesException):
             evaluate_rules_response(response, ["CalculateXP"])
 
     def test_raises_when_requested_decision_not_in_results(self):
-        response = self._make_rules_response("OtherDecision")
+        from app.core.rules.rules_dto import RulesResponse
+        response = RulesResponse.model_validate(_make_kie_json(42))
+        with pytest.raises(RulesException):
+            evaluate_rules_response(response, ["NonExistentDecision"])
+
+    def test_raises_when_decision_result_is_null(self):
+        from app.core.rules.rules_dto import RulesResponse
+        body = _make_kie_json(42)
+        # Null result — evaluate_rules_response filters these out
+        body["result"]["dmn-evaluation-result"]["decision-results"]["_BE7648BE"]["result"] = None
+        response = RulesResponse.model_validate(body)
         with pytest.raises(RulesException):
             evaluate_rules_response(response, ["CalculateXP"])
 
-    def test_raises_when_decision_result_is_none(self):
-        info = _make_decision_info("CalculateXP", "SUCCEEDED", None)
-        response = MagicMock()
-        response.type = "SUCCESS"
-        response.result.dmn_evaluation_result.decision_results = {"CalculateXP": info}
+    def test_raises_when_decision_status_is_failed(self):
+        from app.core.rules.rules_dto import RulesResponse
+        body = _make_kie_json(42)
+        body["result"]["dmn-evaluation-result"]["decision-results"]["_BE7648BE"]["status"] = "FAILED"
+        response = RulesResponse.model_validate(body)
         with pytest.raises(RulesException):
             evaluate_rules_response(response, ["CalculateXP"])
 
 
 class TestRulesEngineExecute:
-    def test_raises_value_error_for_unknown_dmn(self):
-        with pytest.raises(ValueError, match="not found in registry"):
-            RulesEngine.execute("UNKNOWN_DMN", ["SomeDecision"], {})
 
-    def test_raises_rules_exception_on_non_200_response(self):
-        mock_response = MagicMock()
-        mock_response.status_code = 500
+    def _patch_httpx(self, status_code: int, body: dict):
+        """
+        Patch httpx.AsyncClient so that client.post() returns a mock response.
+        We patch at the module level (app.services.rules_service.httpx) so the
+        patch targets the exact import used by rules_service.py.
+        """
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            return_value=_make_httpx_response(status_code, body)
+        )
+        mock_async_ctx = AsyncMock()
+        mock_async_ctx.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_async_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.services.rules_service.requests.post", return_value=mock_response), \
+        mock_httpx = MagicMock()
+        mock_httpx.AsyncClient.return_value = mock_async_ctx
+        return mock_httpx, mock_client
+
+    @pytest.mark.asyncio
+    async def test_happy_path_returns_result_list(self):
+        mock_httpx, mock_client = self._patch_httpx(200, _make_kie_json(42))
+        with patch("app.services.rules_service.httpx", mock_httpx):
+            result = await RulesEngine.execute(
+                DmnRegistryKeyEnum.XP_DMN,
+                [DecisionNameEnum.CALCULATE_XP],
+                {"difficulty": 1, "time_taken": 5, "time_limit": 60},
+            )
+        assert len(result) == 1
+        assert result[0].result == 42
+        assert result[0].decision_name == "CalculateXP"
+
+    @pytest.mark.asyncio
+    async def test_posts_to_correct_url(self):
+        mock_httpx, mock_client = self._patch_httpx(200, _make_kie_json(20))
+        with patch("app.services.rules_service.httpx", mock_httpx), \
                 patch("app.services.rules_service.settings") as mock_settings:
-            mock_settings.RULE_SERVER_URL = "http://localhost:8080"
-            mock_settings.RULE_SERVER_USER = "admin"
-            mock_settings.RULE_SERVER_PASSWORD = "password"
+            mock_settings.RULE_SERVER_URL = "http://kie-server:8080"
+            mock_settings.RULE_SERVER_USER = "user"
+            mock_settings.RULE_SERVER_PASSWORD = "pass"
+            await RulesEngine.execute(
+                DmnRegistryKeyEnum.XP_DMN,
+                [DecisionNameEnum.CALCULATE_XP],
+                {"difficulty": 1, "time_taken": 5, "time_limit": 60},
+            )
+        call_args = mock_client.post.call_args
+        url = call_args.args[0] if call_args.args else call_args.kwargs.get("url") or call_args.args[0]
+        assert "code_exp26_rules" in url
+        assert "dmn" in url
+
+    @pytest.mark.asyncio
+    async def test_raises_rules_exception_on_non_200(self):
+        mock_httpx, _ = self._patch_httpx(500, {})
+        with patch("app.services.rules_service.httpx", mock_httpx):
             with pytest.raises(RulesException):
-                RulesEngine.execute("XP_DMN", ["CalculateXP"], {"difficulty": 3})
+                await RulesEngine.execute(
+                    DmnRegistryKeyEnum.XP_DMN,
+                    [DecisionNameEnum.CALCULATE_XP],
+                    {"difficulty": 1, "time_taken": 5, "time_limit": 60},
+                )
 
-    def test_calls_post_with_correct_payload_structure(self):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
+    @pytest.mark.asyncio
+    async def test_raises_rules_exception_on_404(self):
+        mock_httpx, _ = self._patch_httpx(404, {})
+        with patch("app.services.rules_service.httpx", mock_httpx):
+            with pytest.raises(RulesException):
+                await RulesEngine.execute(
+                    DmnRegistryKeyEnum.XP_DMN,
+                    [DecisionNameEnum.CALCULATE_XP],
+                    {},
+                )
 
-        decision_info = {
-            "messages": [],
-            "decision-id": "dec-1",
-            "decision-name": "CalculateXP",
-            "result": 50,
-            "status": "SUCCEEDED",
-        }
-        mock_response.json.return_value = {
-            "type": "SUCCESS",
-            "msg": "ok",
-            "result": {
-                "dmn-evaluation-result": {
-                    "messages": [],
-                    "model-namespace": "ns",
-                    "model-name": "Xp",
-                    "decision-name": "CalculateXP",
-                    "dmn-context": {},
-                    "decision-results": {"CalculateXP": decision_info},
-                }
-            },
-        }
+    @pytest.mark.asyncio
+    async def test_raises_value_error_on_unknown_dmn_key(self):
+        with pytest.raises(ValueError, match="not found in registry"):
+            await RulesEngine.execute(
+                "NONEXISTENT_DMN",
+                [DecisionNameEnum.CALCULATE_XP],
+                {},
+            )
 
-        with patch("app.services.rules_service.requests.post", return_value=mock_response) as mock_post, \
-                patch("app.services.rules_service.settings") as mock_settings:
-            mock_settings.RULE_SERVER_URL = "http://localhost:8080"
-            mock_settings.RULE_SERVER_USER = "admin"
-            mock_settings.RULE_SERVER_PASSWORD = "password"
-            RulesEngine.execute("XP_DMN", ["CalculateXP"], {"difficulty": 3})
+    @pytest.mark.asyncio
+    async def test_raises_rules_exception_on_kie_failure_response(self):
+        """KIE returns 200 but type=FAILURE — evaluate_rules_response raises."""
+        mock_httpx, _ = self._patch_httpx(200, _make_kie_json(0, response_type="FAILURE"))
+        with patch("app.services.rules_service.httpx", mock_httpx):
+            with pytest.raises(RulesException):
+                await RulesEngine.execute(
+                    DmnRegistryKeyEnum.XP_DMN,
+                    [DecisionNameEnum.CALCULATE_XP],
+                    {"difficulty": 1, "time_taken": 5, "time_limit": 60},
+                )
 
-        called_payload = mock_post.call_args.kwargs["json"]
-        assert called_payload["model-name"] == "Xp"
-        assert called_payload["dmn-context"]["InputData"]["difficulty"] == 3
+    @pytest.mark.asyncio
+    async def test_request_payload_contains_dmn_context(self):
+        """Payload sent to KIE must wrap the request dict inside dmn-context.InputData."""
+        mock_httpx, mock_client = self._patch_httpx(200, _make_kie_json(20))
+        input_data = {"difficulty": 3, "time_taken": 20, "time_limit": 60}
+        with patch("app.services.rules_service.httpx", mock_httpx):
+            await RulesEngine.execute(
+                DmnRegistryKeyEnum.XP_DMN,
+                [DecisionNameEnum.CALCULATE_XP],
+                input_data,
+            )
+        call_kwargs = mock_client.post.call_args.kwargs
+        payload = call_kwargs.get("json") or mock_client.post.call_args.args[1]
+        assert payload["dmn-context"]["InputData"] == input_data
+        assert payload["decision-name"] == [DecisionNameEnum.CALCULATE_XP]
+
+    @pytest.mark.asyncio
+    async def test_request_has_10s_timeout(self):
+        mock_httpx, mock_client = self._patch_httpx(200, _make_kie_json(20))
+        with patch("app.services.rules_service.httpx", mock_httpx):
+            await RulesEngine.execute(
+                DmnRegistryKeyEnum.XP_DMN,
+                [DecisionNameEnum.CALCULATE_XP],
+                {},
+            )
+        call_kwargs = mock_client.post.call_args.kwargs
+        assert call_kwargs.get("timeout") == 10.0

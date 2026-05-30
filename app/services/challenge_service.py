@@ -154,7 +154,7 @@ async def submit_answer(user_id: str, challenge_id: str, payload: SubmitAnswerRe
     # XP: full XP only on first correct answer; subsequent correct = 0; wrong = 0
     xp_earned = 0
     if is_correct and not already_correct:
-        xp_earned = calculate_xp(
+        xp_earned = await calculate_xp(
             difficulty=challenge.difficulty,
             time_taken=payload.time_taken_seconds,
             time_limit=payload.time_limit_seconds

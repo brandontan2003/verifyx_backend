@@ -7,7 +7,7 @@ from app.core.logger import logger
 
 class ScoringEngine(ABC):
     @abstractmethod
-    def calculate_xp(self, difficulty: int, time_taken: int, time_limit: int) -> int:
+    async def calculate_xp(self, difficulty: int, time_taken: int, time_limit: int) -> int:
         """
         Return XP earned for a completed challenge attempt.
 
@@ -28,12 +28,8 @@ class DefaultScoringEngine(ScoringEngine):
 
     Formula:
         base_xp = XP_TABLE[difficulty]  (env var, default {1:10,2:20,3:35,4:50,5:75})
-        multiplier = speed band (see calculate_speed_multiplier below)
+        multiplier = speed band (see _speed_multiplier below)
         xp = round(base_xp * multiplier)
-
-    This replicates the KIE fallback logic that already exists in
-    progress_service.py, promoted to a first-class engine so it can be
-    selected deliberately rather than only on KIE failure.
     """
 
     def _xp_table(self) -> dict:
@@ -56,7 +52,7 @@ class DefaultScoringEngine(ScoringEngine):
             return 1.2
         return 1.0
 
-    def calculate_xp(self, difficulty: int, time_taken: int, time_limit: int) -> int:
+    async def calculate_xp(self, difficulty: int, time_taken: int, time_limit: int) -> int:
         base_xp = self._xp_table().get(difficulty, 10)
         multiplier = self._speed_multiplier(time_taken, time_limit)
         return round(base_xp * multiplier)
@@ -69,21 +65,20 @@ class KIEScoringEngine(ScoringEngine):
     Falls back to DefaultScoringEngine on any KIE failure so that a
     Rules Engine outage does not break challenge submission.
 
-    Note: RulesEngine.execute() uses synchronous requests. This is a
-    known issue (blocks the event loop). Replace with httpx.AsyncClient
-    if you move XP calculation into an async path — tracked separately.
+    RulesEngine.execute() is now fully async (httpx.AsyncClient) — it no
+    longer blocks the event loop.
     """
 
     def __init__(self):
         self._fallback = DefaultScoringEngine()
 
-    def calculate_xp(self, difficulty: int, time_taken: int, time_limit: int) -> int:
+    async def calculate_xp(self, difficulty: int, time_taken: int, time_limit: int) -> int:
         from app.core.exceptions.exceptions import RulesException
         from app.core.rules.rules_config import DecisionNameEnum, DmnRegistryKeyEnum
         from app.services.rules_service import RulesEngine, evaluate_result_list
 
         try:
-            response = RulesEngine.execute(
+            response = await RulesEngine.execute(
                 DmnRegistryKeyEnum.XP_DMN,
                 [DecisionNameEnum.CALCULATE_XP],
                 {"difficulty": difficulty, "time_taken": time_taken, "time_limit": time_limit},
@@ -95,7 +90,7 @@ class KIEScoringEngine(ScoringEngine):
                 "(difficulty=%d, time_taken=%d, time_limit=%d)",
                 difficulty, time_taken, time_limit
             )
-            return self._fallback.calculate_xp(difficulty, time_taken, time_limit)
+            return await self._fallback.calculate_xp(difficulty, time_taken, time_limit)
 
 
 _engine: ScoringEngine | None = None
