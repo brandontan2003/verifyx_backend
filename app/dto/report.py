@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from app.dto.base import BaseDTO
 from pydantic import field_validator
 
-
+from app.dto.base import BaseDTO
 from app.enums.ReportEnum import ContentType, HarmType, ReportStatus
 
 

@@ -3,10 +3,10 @@ from datetime import date
 from fastapi import Request
 
 from app.config import settings
+from app.core.cache.cache_store import get_store
+from app.core.cache.rate_limit.limiter import is_rate_limited
 from app.core.exceptions.exceptions import RateLimitExceededException, DailyChallengeLimitException
 from app.core.logger import logger
-from app.core.rate_limit.limiter import is_rate_limited
-from app.core.rate_limit.redis_store import get_redis
 
 
 async def ai_rate_limit(request: Request):
@@ -55,22 +55,22 @@ def _daily_key(user_id: str) -> str:
 
 async def _check_daily_limit(user_id: str) -> None:
     try:
-        redis = await get_redis()
-        count = await redis.get(_daily_key(user_id))
+        store = await get_store()
+        count = await store.get(_daily_key(user_id))
         if count is not None and int(count) >= settings.DAILY_CHALLENGE_LIMIT:
             raise DailyChallengeLimitException()
     except DailyChallengeLimitException:
         raise
     except Exception as exc:
-        logger.warning("daily_limit check Redis error — failing open for user %s: %s", user_id, exc)
+        logger.warning("daily_limit check store error — failing open for user %s: %s", user_id, exc)
 
 
 async def _increment_daily_limit(user_id: str) -> None:
     try:
-        redis = await get_redis()
+        store = await get_store()
         key = _daily_key(user_id)
-        count = await redis.incr(key)
+        count = await store.incr(key)
         if count == 1:
-            await redis.expire(key, 172800)  # 48h — survives midnight safely
+            await store.expire(key, 172800)  # 48h — survives midnight safely
     except Exception as exc:
-        logger.warning("daily_limit increment Redis error for user %s: %s", user_id, exc)
+        logger.warning("daily_limit increment store error for user %s: %s", user_id, exc)

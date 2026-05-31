@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.rate_limit.dependencies import read_rate_limit, submit_rate_limit
+from app.core.cache.rate_limit.dependencies import read_rate_limit, submit_rate_limit
 from app.core.scope.dependencies import require_scope
 from app.dependencies import get_current_user, get_db
 from app.dto.base import DataResponse

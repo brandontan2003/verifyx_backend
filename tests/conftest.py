@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.pool import StaticPool
 
-from app.core.rate_limit import redis_store
+from app.core.cache import cache_store
 from app.database import database
 from app.dependencies import get_db, get_current_user
 from app.enums.BadgeEnum import BadgeType
@@ -159,7 +159,7 @@ def mock_redis():
     redis.expire.side_effect = expire
     redis.ttl.side_effect = ttl
 
-    redis_store.init_redis(redis)
+    cache_store.init_store(redis)
 
     # expose control hook to tests
     redis._state = state

@@ -3,8 +3,8 @@ from botocore.exceptions import ClientError
 from jose import jwt, JWTError
 
 from app.config import settings
+from app.core.authentication_provider import AuthProvider
 from app.core.logger import logger
-from app.core.security import AuthProvider
 from app.dto.auth import ResetPasswordRequest, UpdatePasswordRequest
 
 

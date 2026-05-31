@@ -1,8 +1,3 @@
-"""
-Unit tests for app.core.scope.dependencies (require_scope factory).
-
-All DB and auth calls are mocked — no real DB or JWT needed.
-"""
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

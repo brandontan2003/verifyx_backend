@@ -1,19 +1,20 @@
 from typing import Optional
 from uuid import uuid4
 
-from app.core.exceptions.exceptions import ReportNotFoundException
-from app.models.report import Report
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions.exceptions import ReportNotFoundException
 from app.enums.ReportEnum import ReportStatus
+from app.models.report import Report
 
 
 class ReportRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def create(self, user_id: str, content_type: str, content: str, context: Optional[str], harm_type: str) -> Report:
+    async def create(self, user_id: str, content_type: str, content: str, context: Optional[str],
+                     harm_type: str) -> Report:
         report = Report(
             report_id=str(uuid4()),
             user_id=user_id,

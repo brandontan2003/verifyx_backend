@@ -3,10 +3,10 @@ from abc import ABC, abstractmethod
 
 class AIProvider(ABC):
     """
-    Abstract base for all AI providers.
+    Abstract base for all AI authentication.
     Every provider must implement the three core operations.
     Prompt templates live in client.py and are passed in as strings —
-    providers are responsible only for calling their model and returning raw text.
+    authentication are responsible only for calling their model and returning raw text.
     """
 
     @abstractmethod

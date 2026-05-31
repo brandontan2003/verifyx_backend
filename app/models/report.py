@@ -1,11 +1,11 @@
 import uuid
 
 from sqlalchemy import Column, String, Text, DateTime, Enum
-from sqlalchemy.sql import func
 from sqlalchemy import ForeignKey
+from sqlalchemy.sql import func
 
-from app.models.base import Base
 from app.enums.ReportEnum import ContentType, HarmType, ReportStatus
+from app.models.base import Base
 
 
 class Report(Base):

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Cookie, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.rate_limit.dependencies import auth_rate_limit
+from app.core.cache.rate_limit.dependencies import auth_rate_limit
 from app.dependencies import get_current_user, get_db
 from app.dto.auth import SignInRequest, SignUpRequest, ResetPasswordRequest, UpdatePasswordRequest
 from app.dto.base import DataResponse, SuccessResponse

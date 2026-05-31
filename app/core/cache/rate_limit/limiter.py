@@ -1,5 +1,5 @@
 """
-Token bucket rate limiter backed by Redis.
+Token bucket rate limiter backed by RateLimitStore.
 
 Key format: ratelimit:{ip}:{normalised_route}
 TTL = window_seconds (auto-expires, no manual cleanup needed)
@@ -8,17 +8,14 @@ Normalisation strips dynamic path segments so that:
   POST /challenge/abc-123/submit  →  POST:/challenge/submit
   GET  /room/xyz-456/leaderboard  →  GET:/room/leaderboard
   GET  /room/xyz-456/challenge    →  GET:/room/challenge
-
-This means every submission attempt from an IP shares one counter
-regardless of which challenge_id is targeted — which is what we want.
 """
 import re
 import time
 
 from fastapi import Request
 
+from app.core.cache.cache_store import get_store
 from app.core.logger import logger
-from app.core.rate_limit.redis_store import get_redis
 
 # Regex to strip UUIDs and other dynamic segments (alphanumeric + hyphens, 8+ chars)
 _DYNAMIC_SEGMENT = re.compile(r"/[a-zA-Z0-9_-]{8,}")
@@ -47,29 +44,27 @@ async def is_rate_limited(
         window_seconds: int = 60
 ) -> tuple[bool, dict]:
     """
-    Token bucket check via Redis INCR + EXPIRE.
+    Token bucket check via store INCR + EXPIRE.
 
     Returns:
         (limited: bool, headers: dict)
         headers contains X-RateLimit-* values for the response.
 
-    If Redis is unreachable, fails open (allows the request) and logs a warning.
-    Failing open is the correct choice — a Redis outage should not take down the app.
+    If the store is unreachable, fails open (allows the request) and logs a warning.
+    Failing open is the correct choice — a store outage should not take down the app.
     """
     ip = get_ip(request)
     route = f"{request.method}:{normalise_path(request.url.path)}"
     key = f"ratelimit:{ip}:{route}"
 
     try:
-        redis = await get_redis()
+        store = await get_store()
 
-        # Atomic increment + set TTL on first call
-        # INCR is atomic — safe across multiple FastAPI instances
-        count = await redis.incr(key)
+        count = await store.incr(key)
         if count == 1:
-            await redis.expire(key, window_seconds)
+            await store.expire(key, window_seconds)
 
-        ttl = await redis.ttl(key)
+        ttl = await store.ttl(key)
         remaining = max(0, limit - count)
 
         headers = {
@@ -86,7 +81,7 @@ async def is_rate_limited(
 
     except Exception as exc:
         logger.warning(
-            "Rate limiter Redis error — failing open for %s %s: %s",
+            "Rate limiter store error — failing open for %s %s: %s",
             request.method, request.url.path, exc
         )
         return False, {}

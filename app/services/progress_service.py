@@ -1,56 +1,18 @@
-import ast
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.core.exceptions.exceptions import UserNotFoundException, RulesException
+from app.core.exceptions.exceptions import UserNotFoundException
 from app.core.logger import logger
-from app.core.rules.rules_config import DecisionNameEnum, DmnRegistryKeyEnum
+from app.core.rules.scoring_engine import get_scoring_engine
 from app.dto.progress import BadgeResponse, UpdateProgressResponse, UpdateProgressRequest, UserProgressResponse
 from app.enums.BadgeEnum import BadgeType
 from app.repositories.progress_repo import ProgressRepository
 from app.repositories.user_repo import UserRepository
-from app.services.rules_service import RulesEngine, evaluate_result_list
 
 
-# Speed multiplier
-def calculate_speed_multiplier(time_taken: int, time_limit: int) -> float:
-    if time_limit <= 0:
-        return 1.0
-
-    ratio = time_taken / time_limit
-
-    if ratio < 0.25:
-        return 2.0
-    elif ratio < 0.50:
-        return 1.5
-    elif ratio < 0.75:
-        return 1.2
-
-    return 1.0
-
-
-def calculate_xp(difficulty: int, time_taken: int, time_limit: int) -> int:
-    try:
-        request = {
-            "difficulty": difficulty,
-            "time_taken": time_taken,
-            "time_limit": time_limit,
-        }
-
-        response = RulesEngine.execute(
-            DmnRegistryKeyEnum.XP_DMN,
-            [DecisionNameEnum.CALCULATE_XP],
-            request
-        )
-
-        return evaluate_result_list(response, DecisionNameEnum.CALCULATE_XP)
-
-    except RulesException:
-        base_xp = ast.literal_eval(settings.XP_TABLE).get(difficulty, 10)
-        multiplier = calculate_speed_multiplier(time_taken, time_limit)
-        return round(base_xp * multiplier)
+async def calculate_xp(difficulty: int, time_taken: int, time_limit: int) -> int:
+    return await get_scoring_engine().calculate_xp(difficulty, time_taken, time_limit)
 
 
 # Streak calculation
@@ -119,7 +81,7 @@ async def update_progress(user_id: str, payload: UpdateProgressRequest,
 
     today = date.today()
 
-    xp_earned = calculate_xp(
+    xp_earned = await calculate_xp(
         payload.difficulty,
         payload.time_taken_seconds,
         payload.time_limit_seconds

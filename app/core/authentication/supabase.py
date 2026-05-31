@@ -3,8 +3,8 @@ from jose import jwt, JWTError
 from supabase import create_client
 
 from app.config import settings
+from app.core.authentication_provider import AuthProvider
 from app.core.logger import logger
-from app.core.security import AuthProvider
 from app.dto.auth import ResetPasswordRequest, UpdatePasswordRequest
 
 

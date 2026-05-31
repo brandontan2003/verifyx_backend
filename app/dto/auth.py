@@ -27,7 +27,7 @@ class ResetPasswordRequest(BaseDTO):
 
 class UpdatePasswordRequest(BaseDTO):
     """
-    Unified password-reset completion DTO for both providers.
+    Unified password-reset completion DTO for both authentication.
 
     Supabase flow:
       - User clicks the reset link → lands on /reset-password?token=<access_token>

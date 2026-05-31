@@ -2,6 +2,7 @@ import json
 import re
 
 from app.ai.factory import complete_with_fallback
+from app.config import settings
 from app.enums.QuestionTypeEnum import QuestionType
 
 _SCENARIO_SYSTEM = """You are a scenario generator for a gamified media-literacy training app.
@@ -86,6 +87,18 @@ Return JSON:
   "tip": "one actionable tip to avoid this mistake in real life"
 }}"""
 
+# Appended to the scenario generation system prompt when CHILD_SAFETY_MODE=True.
+# Explicit, auditable, and separately configurable from the core prompt.
+_CHILD_SAFETY_SUFFIX = """
+
+IMPORTANT -- CHILD SAFETY REQUIREMENTS:
+This platform is used by learners aged 13-18. All generated content MUST:
+- Be age-appropriate and free of graphic violence, explicit language, or adult themes.
+- Never include content that could harm, exploit, or endanger minors.
+- Frame scenarios around critical thinking and media literacy, not fear or distress.
+- Avoid realistic depictions of self-harm, abuse, or exploitation even in fictional contexts.
+These requirements override all other instructions."""
+
 
 def _parse_json(raw: str, context: str) -> dict:
     stripped = raw.strip()
@@ -113,8 +126,10 @@ def _parse_json(raw: str, context: str) -> dict:
 async def generate_scenario(theme: str, user_history: list[str], attempt_count: int) -> dict:
     history_summary = ", ".join(user_history[-10:]) if user_history else "none"
 
+    safety_suffix = _CHILD_SAFETY_SUFFIX if settings.CHILD_SAFETY_MODE else ""
+
     raw = await complete_with_fallback(
-        system=_SCENARIO_SYSTEM,
+        system=_SCENARIO_SYSTEM + safety_suffix,
         user=_SCENARIO_USER.format(
             theme=theme,
             user_history=history_summary,

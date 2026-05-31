@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.core.rate_limit.dependencies import ai_rate_limit
+from app.core.cache.rate_limit.dependencies import ai_rate_limit
 from app.dependencies import get_current_user
 from app.dto.base import DataResponse
 from app.dto.error import ErrorResponse

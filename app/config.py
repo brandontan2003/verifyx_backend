@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
+    # AI prompt configuration
+    AI_PLATFORM_CONTEXT: str = "a digital literacy and media safety training platform"
+    # When True, appends a child-safety instruction suffix to all AI scenario generation
+    # prompts. Must be True for any child-facing deployment
+    CHILD_SAFETY_MODE: bool = True
+
     # Supabase admin (server-side session revocation)
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_KEY: str = ""
@@ -52,11 +58,17 @@ class Settings(BaseSettings):
     COGNITO_CLIENT_ID: str = ""
     COGNITO_USER_POOL_ID: str = ""
 
-    # Rules Configuration
+    # Rules / Scoring Engine
+    # "default" → DefaultScoringEngine (pure-Python, no external dependency)
+    # "kie" → KIEScoringEngine (delegates to KIE/Drools DMN server, falls back to DefaultScoringEngine on KIE failure)
+    SCORING_ENGINE: str = "default"
     RULE_SERVER_URL: str = ""
     RULE_SERVER_USER: str = ""
     RULE_SERVER_PASSWORD: str = ""
     XP_TABLE: str = "{1: 10, 2: 20, 3: 35, 4: 50, 5: 75}"
+
+    # Logging levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOGGING_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parent.parent / f".env.{env}",

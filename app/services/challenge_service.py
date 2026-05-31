@@ -3,9 +3,9 @@ import math
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import client as ai
+from app.core.cache.rate_limit.dependencies import _check_daily_limit, _increment_daily_limit
 from app.core.exceptions.exceptions import ChallengeNotFoundException, InvalidAnswerFormatException
 from app.core.logger import logger
-from app.core.rate_limit.dependencies import _check_daily_limit, _increment_daily_limit
 from app.dto.challenge import (
     GenerateChallengeRequest, ChallengeResponse, ChallengeOption,
     SubmitAnswerRequest, AttemptResponse, DebriefDetail,
@@ -154,7 +154,7 @@ async def submit_answer(user_id: str, challenge_id: str, payload: SubmitAnswerRe
     # XP: full XP only on first correct answer; subsequent correct = 0; wrong = 0
     xp_earned = 0
     if is_correct and not already_correct:
-        xp_earned = calculate_xp(
+        xp_earned = await calculate_xp(
             difficulty=challenge.difficulty,
             time_taken=payload.time_taken_seconds,
             time_limit=payload.time_limit_seconds
