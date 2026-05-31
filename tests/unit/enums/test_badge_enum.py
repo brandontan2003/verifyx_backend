@@ -6,7 +6,7 @@ from app.enums.BadgeEnum import BadgeType
 class TestBadgeType:
     def test_all_members_present(self):
         members = {m.value for m in BadgeType}
-        assert members == {"xp", "streak", "completion", "perfect"}
+        assert members == {"xp", "streak", "completion"}
 
     def test_is_string_enum(self):
         assert isinstance(BadgeType.xp, str)
@@ -20,7 +20,6 @@ class TestBadgeType:
         assert BadgeType("xp") is BadgeType.xp
         assert BadgeType("streak") is BadgeType.streak
         assert BadgeType("completion") is BadgeType.completion
-        assert BadgeType("perfect") is BadgeType.perfect
 
     def test_invalid_value_raises(self):
         with pytest.raises(ValueError):
